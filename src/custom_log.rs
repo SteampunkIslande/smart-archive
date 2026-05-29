@@ -45,11 +45,14 @@ pub fn log_init(cli: &mut cli::Cli) -> anyhow::Result<()> {
             );
         }
 
-        builder.build(
-            log4rs::config::Root::builder()
-                .appender("logfile")
-                .build(log::LevelFilter::Info),
-        )?
+        builder.build({
+            let mut root_builder = log4rs::config::Root::builder();
+            root_builder = root_builder.appender("logfile");
+            if !cli.quiet {
+                root_builder = root_builder.appender("stderr")
+            }
+            root_builder.build(log::LevelFilter::Info)
+        })?
     };
     log4rs::init_config(config)?;
     Ok(())
