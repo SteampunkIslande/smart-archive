@@ -23,9 +23,22 @@ use custom_log::log_init;
 const CHECKSUM_FILE: &str = ".checksums";
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    log_init(&cli).expect("Impossible d'initialiser le logger");
+    let mut cli = Cli::parse();
 
+    // log_init modifie la CLI car dans le cas où le dossier de destination existe, il faut le modifier afin d'y inclure le nom du chemin de base de src
+    log_init(&mut cli)?;
+
+    match entry_point(cli) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Peut-être un peu tiré par les cheveux, mais permet de tracer même les erreurs d'exécution dans le fichier de log
+            error!("Erreur d'exécution: {}", e);
+            Err(e)
+        }
+    }
+}
+
+fn entry_point(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         cli::Commands::Prepare { path } => prepare(&path),
         cli::Commands::Verify { path, interactive } => verify(&path, interactive),
@@ -40,7 +53,7 @@ fn prepare(path: &Path) -> anyhow::Result<()> {
     let checksum_path = path.join(CHECKSUM_FILE);
 
     if checksum_path.exists() {
-        info!("Le fichier .checksums existe déjà, vérification...");
+        info!("Le fichier `.checksums` existe déjà, vérification...");
         verify(path, false)?;
         info!("Vérification OK.");
         return Ok(());
@@ -49,9 +62,9 @@ fn prepare(path: &Path) -> anyhow::Result<()> {
     let checksums = compute_checksums(path).context("Erreur de calcul de la checksum")?;
 
     write_checksums(&checksum_path, &checksums)
-        .context("Erreur lors de l'écriture du fichier .checksums")?;
+        .context("Erreur lors de l'écriture du fichier `.checksums`")?;
 
-    info!("Fichier .checksums généré.");
+    info!("Fichier `.checksums` généré.");
     Ok(())
 }
 
@@ -195,7 +208,7 @@ fn copy_dir(source: &Path, destination: &Path) -> anyhow::Result<()> {
     fs::copy(source.join(CHECKSUM_FILE), destination.join(CHECKSUM_FILE))
         .with_context(|| format!("Erreur lors de la copie de .checksums"))?;
 
-    println!("Copie terminée.");
+    info!("Copie terminée.");
     Ok(())
 }
 

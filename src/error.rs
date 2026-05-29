@@ -16,4 +16,6 @@ pub enum ArchiveError {
     },
     #[error("Fichier inattendu: {0}")]
     UnexpectedFile(String),
+    #[error("Le dossier `{0}` n'est pas un nom de dossier source valide.")]
+    InvalidSourceDir(String),
 }

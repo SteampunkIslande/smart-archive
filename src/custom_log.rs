@@ -2,17 +2,24 @@ use anyhow::Context;
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::append::file::FileAppender;
 
+use crate::ArchiveError;
 use crate::cli;
 
-pub fn log_init(cli: &cli::Cli) -> anyhow::Result<()> {
+pub fn log_init(cli: &mut cli::Cli) -> anyhow::Result<()> {
     let log_file = FileAppender::builder().build(
-        cli.log_file.as_ref().unwrap_or(
-            &match &cli.command {
-                &cli::Commands::Copy {
-                    source: _,
-                    ref destination,
+        cli.log_file.as_deref_mut().unwrap_or(
+            &mut (match &mut cli.command {
+                cli::Commands::Copy {
+                    source,
+                    destination,
                 } => {
-                    std::fs::create_dir_all(destination).with_context(|| {
+                    if destination.exists() {
+                        *destination =
+                            destination.join(source.file_name().ok_or(
+                                ArchiveError::InvalidSourceDir(source.display().to_string()),
+                            )?);
+                    }
+                    std::fs::create_dir_all(&destination).with_context(|| {
                         format!(
                             "Impossible de créer le dossier de destination `{}`",
                             destination.display()
@@ -20,10 +27,10 @@ pub fn log_init(cli: &cli::Cli) -> anyhow::Result<()> {
                     })?;
                     destination
                 }
-                &cli::Commands::Prepare { ref path } => path,
-                &cli::Commands::Verify { ref path, .. } => path,
+                cli::Commands::Prepare { path } => path,
+                cli::Commands::Verify { path, .. } => path,
             }
-            .join("archivage-historique.log"),
+            .join("archivage-historique.log")),
         ),
     )?;
     let stderr_file = ConsoleAppender::builder().target(Target::Stderr).build();
