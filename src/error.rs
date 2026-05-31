@@ -18,4 +18,6 @@ pub enum ArchiveError {
     UnexpectedFile(String),
     #[error("Le dossier `{0}` n'est pas un nom de dossier source valide.")]
     InvalidSourceDir(String),
+    #[error("Impossible de définir un fichier de log.")]
+    NoLogFile,
 }

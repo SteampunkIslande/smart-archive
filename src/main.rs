@@ -1,5 +1,4 @@
 use anyhow::{Context, bail};
-use clap::Parser;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -23,10 +22,10 @@ use custom_log::log_init;
 const CHECKSUM_FILE: &str = ".checksums";
 
 fn main() -> anyhow::Result<()> {
-    let mut cli = Cli::parse();
+    let cli = Cli::try_parse()?;
 
     // log_init modifie la CLI car dans le cas où le dossier de destination existe, il faut le modifier afin d'y inclure le nom du chemin de base de src
-    log_init(&mut cli)?;
+    log_init(&cli)?;
 
     match entry_point(cli) {
         Ok(()) => Ok(()),
