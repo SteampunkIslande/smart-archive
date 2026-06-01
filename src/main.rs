@@ -1,4 +1,5 @@
 use anyhow::{Context, bail};
+use glob::Pattern;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -22,9 +23,9 @@ use custom_log::log_init;
 const CHECKSUM_FILE: &str = ".checksums";
 
 fn main() -> anyhow::Result<()> {
+    // En cas d'erreur d'initialisation de la CLI, les erreurs ne seront pas loggées dans le fichier approprié. Ce qui n'est pas gênant, car aucune opération concernant les fichiers n'est effectuée.
     let cli = Cli::try_parse()?;
 
-    // log_init modifie la CLI car dans le cas où le dossier de destination existe, il faut le modifier afin d'y inclure le nom du chemin de base de src
     log_init(&cli)?;
 
     match entry_point(cli) {
@@ -38,27 +39,28 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn entry_point(cli: Cli) -> anyhow::Result<()> {
+    let exclude: Vec<&str> = cli.exclude.split(",").filter(|s| !s.is_empty()).collect();
     match cli.command {
-        cli::Commands::Prepare { path } => prepare(&path),
-        cli::Commands::Verify { path, interactive } => verify(&path, interactive),
+        cli::Commands::Prepare { path } => prepare(&path, &exclude),
+        cli::Commands::Verify { path, interactive } => verify(&path, interactive, &exclude),
         cli::Commands::Copy {
             source,
             destination,
-        } => copy_dir(&source, &destination),
+        } => copy_dir(&source, &destination, &exclude),
     }
 }
 
-fn prepare(path: &Path) -> anyhow::Result<()> {
+fn prepare(path: &Path, exclude: &[&str]) -> anyhow::Result<()> {
     let checksum_path = path.join(CHECKSUM_FILE);
 
     if checksum_path.exists() {
         info!("Le fichier `.checksums` existe déjà, vérification...");
-        verify(path, false)?;
+        verify(path, false, exclude)?;
         info!("Vérification OK.");
         return Ok(());
     }
 
-    let checksums = compute_checksums(path).context("Erreur de calcul de la checksum")?;
+    let checksums = compute_checksums(path, exclude).context("Erreur de calcul de la checksum")?;
 
     write_checksums(&checksum_path, &checksums)
         .context("Erreur lors de l'écriture du fichier `.checksums`")?;
@@ -67,7 +69,7 @@ fn prepare(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn verify(path: &Path, interactive: bool) -> anyhow::Result<()> {
+fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()> {
     let checksum_path = path.join(CHECKSUM_FILE);
 
     if !checksum_path.exists() {
@@ -81,7 +83,7 @@ fn verify(path: &Path, interactive: bool) -> anyhow::Result<()> {
     let expected: HashMap<String, String> = read_checksums(&checksum_path)
         .with_context(|| format!("Erreur lors de la lecture de `{}`", checksum_path.display()))?;
 
-    let actual: HashMap<String, String> = compute_checksums(path).with_context(|| {
+    let actual: HashMap<String, String> = compute_checksums(path, exclude).with_context(|| {
         format!(
             "Erreur lors du calcul des checksums du dossier `{}`",
             path.display()
@@ -133,6 +135,7 @@ fn verify(path: &Path, interactive: bool) -> anyhow::Result<()> {
                 if ask("Mettre à jour la checksum ?") {
                     updated.insert(key.clone(), actual[key].clone());
                     modified = true;
+                    info!("Prévu: mise à jour de la checksum du fichier `{}`", key);
                 } else {
                     info!("La checksum de `{}` ne sera pas modifié.", key);
                 }
@@ -155,14 +158,15 @@ fn verify(path: &Path, interactive: bool) -> anyhow::Result<()> {
                 checksum_path.display()
             )
         })?;
+        info!("Le fichier des checksums a bien été modifié.")
     } else {
         info!("Vérification terminée, tout est conforme.")
     }
     Ok(())
 }
 
-fn copy_dir(source: &Path, destination: &Path) -> anyhow::Result<()> {
-    verify(source, false)?;
+fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Result<()> {
+    verify(source, false, exclude)?;
     if !destination.exists() && !destination.is_dir() {
         bail!(
             "Le dossier `{}` n'existe pas, il aurait dû être créé dès le début du programme!",
@@ -211,16 +215,15 @@ fn copy_dir(source: &Path, destination: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn compute_checksums(path: &Path) -> anyhow::Result<HashMap<String, String>> {
+fn compute_checksums(path: &Path, exclude: &[&str]) -> anyhow::Result<HashMap<String, String>> {
     let mut result = HashMap::new();
 
     for entry in WalkDir::new(path)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| should_include(e.path()))
+        .filter_entry(|e| should_include(e.path(), exclude))
+        .filter_map(|entry| entry.ok())
     {
-        let entry = entry?;
-
         if entry.file_type().is_symlink() {
             continue;
         }
@@ -247,14 +250,14 @@ fn compute_checksums(path: &Path) -> anyhow::Result<HashMap<String, String>> {
     Ok(result)
 }
 
-fn should_include(path: &Path) -> bool {
-    path.components().all(|c| {
-        if matches!(c, std::path::Component::ParentDir) {
-            return false;
-        }
-        let s = c.as_os_str().to_string_lossy();
-        !s.starts_with('.')
-    })
+fn should_include(path: &Path, exclude: &[&str]) -> bool {
+    !exclude
+        .iter()
+        .filter_map(|e| Pattern::new(e).ok())
+        .any(|p| p.matches_path(path))
+        && !path
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with("."))
 }
 
 fn md5_file(path: &Path) -> io::Result<String> {

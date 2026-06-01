@@ -2,11 +2,9 @@ use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::append::file::FileAppender;
 
 use crate::cli;
-use crate::error::ArchiveError::NoLogFile;
 
 pub fn log_init(cli: &cli::Cli) -> anyhow::Result<()> {
-    let log_file =
-        FileAppender::builder().build(cli.log_file.as_ref().ok_or_else(|| NoLogFile)?)?;
+    let log_file = FileAppender::builder().build(&cli.log_file)?;
 
     let stderr_file = ConsoleAppender::builder().target(Target::Stderr).build();
     let config = {
