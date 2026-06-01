@@ -1,10 +1,18 @@
+use anyhow::Context;
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::append::file::FileAppender;
 
 use crate::cli;
 
 pub fn log_init(cli: &cli::Cli) -> anyhow::Result<()> {
-    let log_file = FileAppender::builder().build(&cli.log_file)?;
+    let log_file = FileAppender::builder()
+        .build(&cli.log_file)
+        .with_context(|| {
+            format!(
+                "Impossible de créer le fichier de log dans {}.",
+                &cli.log_file.display()
+            )
+        })?;
 
     let stderr_file = ConsoleAppender::builder().target(Target::Stderr).build();
     let config = {

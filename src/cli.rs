@@ -17,7 +17,7 @@ pub struct Cli {
     ///
     /// Attention, tous les chemins spécifiés dans la ligne de commande sont résolus de façon absolue, donc pour le pattern utilisé, attention
     #[arg(short, long)]
-    pub exclude: String,
+    pub exclude: Option<String>,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -62,7 +62,10 @@ impl Cli {
                 source,
                 destination,
             } => {
-                *source = source.canonicalize()?;
+                *source = source.canonicalize().context(format!(
+                    "Impossible de résoudre entièrement {}",
+                    source.display()
+                ))?;
                 if !source.is_dir() {
                     return Err(ArchiveError::InvalidSourceDir(source.display().to_string()).into());
                 }
@@ -84,13 +87,19 @@ impl Cli {
                 }
             }
             self::Commands::Prepare { path } => {
-                *path = path.canonicalize()?;
+                *path = path.canonicalize().context(format!(
+                    "Impossible de résoudre entièrement {}",
+                    path.display()
+                ))?;
                 if !path.is_dir() {
                     return Err(ArchiveError::InvalidSourceDir(path.display().to_string()).into());
                 }
             }
             self::Commands::Verify { path, .. } => {
-                *path = path.canonicalize()?;
+                *path = path.canonicalize().context(format!(
+                    "Impossible de résoudre entièrement {}",
+                    path.display()
+                ))?;
                 if !path.is_dir() {
                     return Err(ArchiveError::InvalidSourceDir(path.display().to_string()).into());
                 }
@@ -102,6 +111,7 @@ impl Cli {
                 self::Commands::Copy {
                     source: _,
                     destination,
+                    ..
                 } => destination,
                 self::Commands::Prepare { path, .. } => path,
                 self::Commands::Verify { path, .. } => path,

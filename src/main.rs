@@ -39,7 +39,9 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn entry_point(cli: Cli) -> anyhow::Result<()> {
-    let exclude: Vec<&str> = cli.exclude.split(",").filter(|s| !s.is_empty()).collect();
+    let exclude = cli.exclude.unwrap_or_default();
+    let exclude: Vec<&str> = exclude.split(",").filter(|s| !s.is_empty()).collect();
+
     match cli.command {
         cli::Commands::Prepare { path } => prepare(&path, &exclude),
         cli::Commands::Verify { path, interactive } => verify(&path, interactive, &exclude),
@@ -99,7 +101,7 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
     // fichiers manquants
     for missing in expected_keys.difference(&actual_keys) {
         if interactive {
-            error!(target:"interactive","Fichier manquant: `{}`", missing);
+            error!("Fichier manquant: `{}`", missing);
             if ask("Supprimer cette checksum ?") {
                 updated.remove(missing);
                 modified = true;
@@ -167,7 +169,13 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
 
 fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Result<()> {
     verify(source, false, exclude)?;
-    if !destination.exists() && !destination.is_dir() {
+    if destination.exists() && !destination.is_dir() {
+        bail!(
+            "Le chemin `{}` existe et n'est pas un dossier",
+            destination.display()
+        );
+    }
+    if !destination.exists() {
         bail!(
             "Le dossier `{}` n'existe pas, il aurait dû être créé dès le début du programme!",
             destination.display()
