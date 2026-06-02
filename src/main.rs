@@ -261,6 +261,11 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
 
         let src = source.join(rel);
         let dst = destination.join(rel);
+        if let Some(up_to_dst_parent) = dst.parent() {
+            if !up_to_dst_parent.exists() {
+                fs::create_dir_all(up_to_dst_parent)?;
+            }
+        }
 
         fs::copy(&src, &dst).with_context(|| {
             format!(
@@ -289,8 +294,8 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
 
     fs::copy(source.join(CHECKSUM_FILE), destination.join(CHECKSUM_FILE))
         .with_context(|| format!("Erreur lors de la copie de .checksums"))?;
-
-    info!("Copie terminée.");
+    info!("Copie terminée. Vérification...");
+    verify(destination, false, exclude)?;
     Ok(())
 }
 
