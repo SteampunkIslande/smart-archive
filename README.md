@@ -76,3 +76,21 @@ Si le dossier de destination existe et n'est pas vide, le dossier source est cop
 Format : `{chemin}\t{md5_hash}`
 
 Le fichier est trié alphabétiquement par chemin et placé à la racine du dossier archivé.
+
+## Améliorations
+
+Avant rayon:
+```
+time ./smart-archive verify /data/alexandru
+2026-06-02T15:15:28.861027744+02:00 INFO smart_archive - Vérification terminée, tout est conforme.
+./smart-archive verify /data/alexandru  2,95s user 0,19s system 99% cpu 3,139 total
+```
+
+Après rayon, la même commande:
+```
+time ./smart-archive verify /data/alexandru
+2026-06-02T15:17:32.295478078+02:00 INFO smart_archive - Vérification terminée, tout est conforme.
+./smart-archive verify /data/alexandru  4,37s user 0,25s system 1764% cpu 0,262 total
+```
+
+L'amélioration est d'un facteur presque 12 !

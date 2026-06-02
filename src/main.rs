@@ -1,6 +1,8 @@
 use anyhow::{Context, bail};
 use glob::Pattern;
 use inquire::{error::InquireResult, prompt_confirmation, prompt_text};
+use rayon::iter::ParallelBridge;
+use rayon::iter::ParallelIterator;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -289,38 +291,25 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
 }
 
 fn compute_checksums(path: &Path, exclude: &[&str]) -> anyhow::Result<HashMap<String, String>> {
-    let mut result = HashMap::new();
-
-    for entry in WalkDir::new(path)
+    Ok(WalkDir::new(path)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| should_include(e.path(), exclude))
         .filter_map(|entry| entry.ok())
-    {
-        if entry.file_type().is_symlink() {
-            continue;
-        }
+        .filter(|e| !e.file_type().is_symlink() && e.file_type().is_file())
+        .filter(|e| e.path().file_name().unwrap_or_default() != CHECKSUM_FILE)
+        .par_bridge()
+        .filter_map(|entry| {
+            let p = entry.path();
 
-        if !entry.file_type().is_file() {
-            continue;
-        }
+            let rel = p.strip_prefix(path).ok()?;
 
-        let p = entry.path();
+            let rel_str = format!("./{}", rel.to_string_lossy());
 
-        if p.file_name().unwrap_or_default() == CHECKSUM_FILE {
-            continue;
-        }
-
-        let rel = p.strip_prefix(path)?;
-
-        let rel_str = format!("./{}", rel.to_string_lossy());
-
-        let digest = md5_file(p)?;
-
-        result.insert(rel_str, digest);
-    }
-
-    Ok(result)
+            let digest = md5_file(p).ok()?;
+            Some((rel_str, digest))
+        })
+        .collect())
 }
 
 fn should_include(path: &Path, exclude: &[&str]) -> bool {
