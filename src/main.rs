@@ -246,12 +246,15 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
             destination.display()
         );
     }
-    if !destination.exists() {
-        bail!(
-            "Le dossier `{}` n'existe pas, il aurait dû être créé dès le début du programme!",
-            destination.display()
-        );
-    }
+
+    let target =
+        if destination.exists() {
+            destination.join(source.file_name().ok_or_else(|| {
+                anyhow::anyhow!("Impossible de déterminer le nom du dossier source")
+            })?)
+        } else {
+            destination.to_path_buf()
+        };
 
     let checksums: HashMap<String, String> =
         read_checksums(&source.join(CHECKSUM_FILE)).context("Erreur lecture checksums")?;
@@ -260,7 +263,7 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
         let rel = rel_path.trim_start_matches("./");
 
         let src = source.join(rel);
-        let dst = destination.join(rel);
+        let dst = target.join(rel);
         if let Some(up_to_dst_parent) = dst.parent() {
             if !up_to_dst_parent.exists() {
                 fs::create_dir_all(up_to_dst_parent)?;
@@ -292,10 +295,10 @@ fn copy_dir(source: &Path, destination: &Path, exclude: &[&str]) -> anyhow::Resu
         }
     }
 
-    fs::copy(source.join(CHECKSUM_FILE), destination.join(CHECKSUM_FILE))
+    fs::copy(source.join(CHECKSUM_FILE), target.join(CHECKSUM_FILE))
         .with_context(|| format!("Erreur lors de la copie de .checksums"))?;
     info!("Copie terminée. Vérification...");
-    verify(destination, false, exclude)?;
+    verify(&target, false, exclude)?;
     Ok(())
 }
 
