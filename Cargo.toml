@@ -13,3 +13,8 @@ log4rs = "1.4.0"
 md5 = "0.8.0"
 thiserror = "2.0.18"
 walkdir = "2.5.0"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
+tempfile = "3.0"
