@@ -115,9 +115,9 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
                 prompt_confirmation("Supprimer cette checksum ?"),
                 InquireResult::Ok(true)
             ) {
-                if let InquireResult::Ok(reason) = prompt_text(
-                    "Veuillez entrer un motif pour l'existence du fichier supplémentaire",
-                ) {
+                if let InquireResult::Ok(reason) =
+                    prompt_text("Veuillez entrer un motif pour la disparition de ce fichier")
+                {
                     updated.remove(missing);
                     modified = true;
                     info!(
@@ -145,7 +145,7 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
     for extra in actual_keys.difference(&expected_keys) {
         aok = false;
         if interactive {
-            warn!("Fichier non listé: {}", extra);
+            warn!("Fichier non encore listé: {}", extra);
             if matches!(
                 prompt_confirmation("Ajouter ce fichier aux checksums ?"),
                 InquireResult::Ok(true)
