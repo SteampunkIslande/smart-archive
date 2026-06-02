@@ -1,5 +1,6 @@
 use anyhow::{Context, bail};
 use glob::Pattern;
+use inquire::{error::InquireResult, prompt_confirmation, prompt_text};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -32,7 +33,7 @@ fn main() -> anyhow::Result<()> {
         Ok(()) => Ok(()),
         Err(e) => {
             // Peut-être un peu tiré par les cheveux, mais permet de tracer même les erreurs d'exécution dans le fichier de log
-            error!("Erreur d'exécution: {}", e);
+            error!("{}", e);
             Err(e)
         }
     }
@@ -93,6 +94,7 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
     })?;
 
     let mut modified = false;
+    let mut aok = true;
     let mut updated = expected.clone();
 
     let expected_keys: HashSet<_> = expected.keys().cloned().collect();
@@ -100,11 +102,33 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
 
     // fichiers manquants
     for missing in expected_keys.difference(&actual_keys) {
+        aok = false;
         if interactive {
-            error!("Fichier manquant: `{}`", missing);
-            if ask("Supprimer cette checksum ?") {
-                updated.remove(missing);
-                modified = true;
+            warn!("Fichier manquant: `{}`", missing);
+            if matches!(
+                prompt_confirmation("Supprimer cette checksum ?"),
+                InquireResult::Ok(true)
+            ) {
+                if let InquireResult::Ok(reason) = prompt_text(
+                    "Veuillez entrer un motif pour l'existence du fichier supplémentaire",
+                ) {
+                    updated.remove(missing);
+                    modified = true;
+                    info!(
+                        "Prévu: suppression du fichier `{}` de l'archivage. Motif: {}",
+                        missing, reason
+                    );
+                } else {
+                    info!(
+                        "Le fichier (manquant) `{}` ne sera pas supprimé de la liste des checksums.",
+                        missing
+                    );
+                }
+            } else {
+                info!(
+                    "Le fichier (manquant) `{}` ne sera pas supprimé de la liste des checksums.",
+                    missing
+                );
             }
         } else {
             return Err(ArchiveError::MissingFile(missing.into()).into());
@@ -113,11 +137,28 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
 
     // nouveaux fichiers
     for extra in actual_keys.difference(&expected_keys) {
+        aok = false;
         if interactive {
             warn!("Fichier non listé: {}", extra);
-            if ask("Ajouter ce fichier aux checksums ?") {
-                updated.insert(extra.clone(), actual[extra].clone());
-                modified = true;
+            if matches!(
+                prompt_confirmation("Ajouter ce fichier aux checksums ?"),
+                InquireResult::Ok(true)
+            ) {
+                if let InquireResult::Ok(reason) = prompt_text(
+                    "Veuillez entrer un motif pour l'existence du fichier supplémentaire",
+                ) {
+                    updated.insert(extra.clone(), actual[extra].clone());
+                    modified = true;
+                    info!(
+                        "Prévu: ajout du fichier `{}` à l'archivage. Motif: {}",
+                        extra, reason
+                    );
+                } else {
+                    info!(
+                        "Le fichier (supplémentaire) `{}` ne sera pas ajouté à la liste des checksums.",
+                        extra
+                    );
+                }
             } else {
                 info!(
                     "Le fichier (supplémentaire) `{}` ne sera pas ajouté à la liste des checksums.",
@@ -132,14 +173,33 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
     // checksum différentes
     for key in expected_keys.intersection(&actual_keys) {
         if expected[key] != actual[key] {
+            aok = false;
             if interactive {
                 warn!("Checksum différente pour le fichier `{}`", key);
-                if ask("Mettre à jour la checksum ?") {
-                    updated.insert(key.clone(), actual[key].clone());
-                    modified = true;
-                    info!("Prévu: mise à jour de la checksum du fichier `{}`", key);
+                if matches!(
+                    prompt_confirmation("Mettre à jour la checksum ?"),
+                    InquireResult::Ok(true)
+                ) {
+                    if let InquireResult::Ok(reason) = prompt_text(
+                        "Veuillez entrer un motif pour la différence entre les checksums",
+                    ) {
+                        updated.insert(key.clone(), actual[key].clone());
+                        modified = true;
+                        info!(
+                            "Prévu: mise à jour de la checksum du fichier `{}`. Motif: {}",
+                            key, reason
+                        );
+                    } else {
+                        info!(
+                            "La checksum de `{}` ne sera pas modifiée. L'erreur reviendra à la prochaine exécution si le fichier n'a pas été corrigé.",
+                            key
+                        );
+                    }
                 } else {
-                    info!("La checksum de `{}` ne sera pas modifié.", key);
+                    info!(
+                        "La checksum de `{}` ne sera pas modifiée. L'erreur reviendra à la prochaine exécution si le fichier n'a pas été corrigé.",
+                        key
+                    );
                 }
             } else {
                 return Err(ArchiveError::ChecksumMismatch {
@@ -153,16 +213,21 @@ fn verify(path: &Path, interactive: bool, exclude: &[&str]) -> anyhow::Result<()
     }
 
     if modified {
-        info!("Le fichier des checksums va être modifié pour refléter les changements détectés.");
+        info!(
+            "Le fichier des checksums va être modifié pour refléter les changements détectés. Application des changements..."
+        );
         write_checksums(&checksum_path, &updated).with_context(|| {
             format!(
                 "Impossible d'écrire les checksums dans {}",
                 checksum_path.display()
             )
         })?;
-        info!("Le fichier des checksums a bien été modifié.")
+        info!("Le fichier des checksums a bien été modifié.");
+    }
+    if aok {
+        info!("Vérification terminée, tout est conforme.");
     } else {
-        info!("Vérification terminée, tout est conforme.")
+        info!("Des erreurs ont été détectées, voir les messages précédents.")
     }
     Ok(())
 }
@@ -316,14 +381,4 @@ fn read_checksums(path: &Path) -> io::Result<HashMap<String, String>> {
     }
 
     Ok(map)
-}
-
-fn ask(question: &str) -> bool {
-    print!("{} [y/N]: ", question);
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
-    matches!(input.trim(), "y" | "Y")
 }
