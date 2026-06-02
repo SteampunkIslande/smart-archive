@@ -10,6 +10,10 @@ pub struct Cli {
     #[clap(skip)]
     pub log_file: PathBuf,
 
+    /// Nombre de threads à utiliser pour rayon. Par défaut: 4
+    #[arg(short, long)]
+    pub threads: Option<usize>,
+
     #[arg(short, long)]
     pub quiet: bool,
 

@@ -28,8 +28,12 @@ const CHECKSUM_FILE: &str = ".checksums";
 fn main() -> anyhow::Result<()> {
     // En cas d'erreur d'initialisation de la CLI, les erreurs ne seront pas loggées dans le fichier approprié. Ce qui n'est pas gênant, car aucune opération concernant les fichiers n'est effectuée.
     let cli = Cli::try_parse()?;
-
     log_init(&cli)?;
+
+    // Initialisation de rayon
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(cli.threads.unwrap_or(4usize))
+        .build_global()?;
 
     match entry_point(cli) {
         Ok(()) => Ok(()),
